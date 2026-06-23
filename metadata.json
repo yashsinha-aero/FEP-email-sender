@@ -1,0 +1,6 @@
+{
+  "name": "ProfMail Sender",
+  "description": "A tool to send templated emails to professors manually from a CSV list.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

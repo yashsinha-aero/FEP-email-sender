@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@layer components {
+  .email-body-preview a {
+    @apply text-blue-600 hover:underline;
+  }
+}

@@ -4,6 +4,10 @@ import { createServer as createViteServer } from "vite";
 import OpenAI from "openai";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
+import { chromium, Page, BrowserContext } from 'playwright';
+
+let activePage: Page | null = null;
+let activeContext: BrowserContext | null = null;
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -58,70 +62,215 @@ async function startServer() {
 
   app.post("/api/send-email", async (req, res) => {
     try {
-      const { smtpHost, smtpPort, smtpUser, smtpPass, fromAddress, ccAddress, to, subject, body, bccMyself } = req.body;
+      const { ccAddress, to, subject, body, manualSend } = req.body;
 
-      if (!smtpHost || !smtpPort || !smtpUser || !smtpPass || !fromAddress || !to || !subject || !body) {
-        return res.status(400).json({ error: "Missing required fields" });
+      if (!activePage || activePage.isClosed()) {
+        return res.status(400).json({ error: "NWM Webmail is not connected. Please connect it first from the UI." });
       }
 
-      const transporterKey = `${smtpHost}:${smtpPort}:${smtpUser}:${smtpPass}`;
-      let transporter = cachedTransporter;
-
-      if (!transporter || cachedTransporterKey !== transporterKey) {
-        if (transporter) {
-          try {
-            transporter.close();
-          } catch (e) {
-            console.error("Error closing old transporter:", e);
-          }
-        }
-
-        transporter = nodemailer.createTransport({
-          pool: true,
-          maxConnections: 1,
-          maxMessages: 100,
-          rateLimit: 1,
-          rateDelta: 10000,
-          host: smtpHost,
-          port: Number(smtpPort),
-          secure: Number(smtpPort) === 465,
-          auth: {
-            user: smtpUser,
-            pass: smtpPass,
-          },
-          connectionTimeout: 10000,
-          greetingTimeout: 10000,
-          socketTimeout: 20000,
-        });
-
-        cachedTransporter = transporter;
-        cachedTransporterKey = transporterKey;
+      if (!to || !subject || !body) {
+        return res.status(400).json({ error: "Missing required fields: to, subject, or body" });
       }
 
       const htmlBody = formatHtmlEmail(body);
 
-      const mailOptions: any = {
-        from: fromAddress,
-        to,
-        subject,
-        html: htmlBody,
+      const dialogHandler = (dialog: any) => {
+        console.warn(`Roundcube dialog popped up: ${dialog.message()}`);
+        dialog.accept().catch(() => {});
       };
 
-      if (ccAddress) {
-        mailOptions.cc = ccAddress;
+      try {
+        activePage.on('dialog', dialogHandler);
+
+        await activePage.goto('https://nwm.iitk.ac.in/?_task=mail&_action=compose');
+        
+        await activePage.waitForSelector('#_to');
+        await activePage.fill('#_to', to);
+        await activePage.fill('#compose-subject', subject);
+        
+        await activePage.evaluate(`((cc) => {
+          if (cc) {
+            const ccEl = document.getElementById('_cc');
+            if (ccEl) {
+              ccEl.value = cc;
+              ccEl.dispatchEvent(new Event('input', { bubbles: true }));
+              ccEl.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          }
+        })(${JSON.stringify(ccAddress)})`);
+
+        const injectionResult = (await activePage.evaluate(`(async (html) => {
+          const getEditor = () => {
+            const tinymce = window.tinymce;
+            if (tinymce && tinymce.activeEditor) {
+              return tinymce.activeEditor;
+            }
+            return null;
+          };
+
+          for (let i = 0; i < 100; i++) {
+            const editor = getEditor();
+            if (editor && editor.initialized) {
+              editor.setContent(html);
+              if (typeof editor.save === 'function') {
+                editor.save();
+              }
+              return { success: true, method: 'tinymce' };
+            }
+            
+            const iframe = document.getElementById('composebody_ifr');
+            if (iframe && iframe.contentDocument) {
+              const iframeBody = iframe.contentDocument.getElementById('tinymce');
+              if (iframeBody) {
+                iframeBody.innerHTML = html;
+                const textarea = document.getElementById('composebody');
+                if (textarea) {
+                  textarea.value = html;
+                }
+                return { success: true, method: 'iframe_direct' };
+              }
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+
+          const textarea = document.getElementById('composebody');
+          if (textarea) {
+            textarea.value = html;
+            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            return { success: true, method: 'textarea_fallback' };
+          }
+
+          return { success: false, error: 'Could not find any editor element or TinyMCE instance.' };
+        })(${JSON.stringify(htmlBody)})`)) as any;
+
+        if (!injectionResult || !injectionResult.success) {
+          throw new Error((injectionResult && injectionResult.error) || "Failed to inject content (result was undefined or failed)");
+        }
+        console.log(`Email body injected using method: ${injectionResult.method}`);
+
+        await activePage.waitForTimeout(1000);
+
+        if (manualSend) {
+          console.log("Manual send option active. Waiting for manual submit or navigation away from compose...");
+          await activePage.waitForURL((url) => !url.href.includes('_action=compose'), { timeout: 600000 });
+          console.log("Manual navigation detected.");
+        } else {
+          const sendButtonSelectors = [
+            'button.send',
+            'button:has-text("Send")',
+            '#rcmbtn107',
+            '.btn-primary.send',
+            'a.send',
+            'a:has-text("Send")',
+            'input[type="submit"].send',
+            'input[value="Send"]'
+          ];
+
+          const clickSendButton = async () => {
+            for (const selector of sendButtonSelectors) {
+              try {
+                const locator = activePage.locator(selector);
+                if (await locator.count() > 0) {
+                  const button = locator.first();
+                  if (await button.isVisible()) {
+                    await button.click();
+                    console.log(`Clicked Send button using selector: ${selector}`);
+                    return true;
+                  }
+                }
+              } catch (err: any) {
+                console.warn(`Attempted selector ${selector} but failed:`, err.message);
+              }
+            }
+            return false;
+          };
+
+          let clicked = await clickSendButton();
+
+          if (!clicked) {
+            try {
+              await activePage.evaluate(`(() => {
+                const form = document.querySelector('form[name="form"]') || document.querySelector('form');
+                if (form) {
+                  form.submit();
+                  return true;
+                }
+                return false;
+              })()`);
+              clicked = true;
+              console.log("Submitted the compose form directly via DOM submit fallback");
+            } catch (err: any) {
+              console.error("Failed to submit form directly:", err.message);
+            }
+          }
+
+          if (!clicked) {
+            throw new Error("Could not find or click the Send button.");
+          }
+
+          try {
+            await activePage.waitForURL((url) => !url.href.includes('_action=compose'), { timeout: 3000 });
+          } catch (e) {
+            console.log("Navigation did not happen in 3s. Attempting a second click to bypass potential spelling/warning prompts...");
+            const secondClickSucceeded = await clickSendButton();
+            if (!secondClickSucceeded) {
+              console.log("Second click on Send button locator failed, attempting form submit fallback again...");
+              await activePage.evaluate(`(() => {
+                const form = document.querySelector('form[name="form"]') || document.querySelector('form');
+                if (form) {
+                  form.submit();
+                  return true;
+                }
+                return false;
+              })()`).catch(() => {});
+            }
+          }
+          
+          await activePage.waitForURL((url) => !url.href.includes('_action=compose'), { timeout: 30000 });
+        }
+
+        res.json({ success: true });
+      } catch (error: any) {
+        console.error("Error sending email:", error);
+        res.status(500).json({ error: error.message || "Failed to send email" });
+      } finally {
+        try {
+          activePage.off('dialog', dialogHandler);
+        } catch (err) {}
       }
-
-      if (bccMyself) {
-        mailOptions.bcc = fromAddress;
-      }
-
-      await transporter.sendMail(mailOptions);
-
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("Error sending email:", error);
-      res.status(500).json({ error: error.message || "Failed to send email" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
+  });
+
+  app.post("/api/start-nwm", async (req, res) => {
+    try {
+      if (!activePage || activePage.isClosed()) {
+        const browser = await chromium.launch({ headless: false });
+        activeContext = await browser.newContext();
+        activePage = await activeContext.newPage();
+        await activePage.goto("https://nwm.iitk.ac.in/", { timeout: 60000 });
+      } else {
+        await activePage.bringToFront();
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Playwright launch error:", err);
+      res.status(500).json({ error: "Failed to launch browser: " + err.message });
+    }
+  });
+
+  app.get("/api/nwm-status", (req, res) => {
+    if (!activePage || activePage.isClosed()) {
+      return res.json({ status: 'disconnected' });
+    }
+    const url = activePage.url();
+    if (url.includes('_task=mail') || url.includes('mail')) {
+      return res.json({ status: 'connected' });
+    }
+    return res.json({ status: 'waiting_for_login' });
   });
 
   app.post("/api/generate-personalization", async (req, res) => {

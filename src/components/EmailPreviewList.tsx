@@ -8,10 +8,11 @@ interface EmailPreviewListProps {
   sentStatus: SentStatus;
   markAsSent: (id: string) => void;
   updateRecipient: (id: string, updates: Partial<Recipient>) => void;
-  smtpConfig: { smtpHost: string; smtpPort: string; smtpUser: string; smtpPass: string; fromAddress: string; ccAddress: string; bccMyself: boolean };
+  smtpConfig: { ccAddress: string; manualSend: boolean };
+  isNwmActive?: boolean;
 }
 
-export function EmailPreviewList({ recipients, template, sentStatus, markAsSent, updateRecipient, smtpConfig }: EmailPreviewListProps) {
+export function EmailPreviewList({ recipients, template, sentStatus, markAsSent, updateRecipient, smtpConfig, isNwmActive }: EmailPreviewListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [generatingFor, setGeneratingFor] = useState<string | null>(null);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
@@ -22,6 +23,7 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
   const [isSendingAll, setIsSendingAll] = useState(false);
   const [sendAllProgress, setSendAllProgress] = useState({ current: 0, total: 0 });
   const cancelSendAllRef = useRef(false);
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
 
   const getReplacedText = (text: string, recipient: Recipient) => {
     let result = text;
@@ -130,16 +132,16 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
     }
   };
 
-  const handleSendDirectly = async (recipient: Recipient, subject: string, body: string, silent = false): Promise<{ success: boolean; error?: string }> => {
+  const handleSendDirectly = async (recipient: Recipient, subject: string, body: string, silent = false, signal?: AbortSignal): Promise<{ success: boolean; error?: string }> => {
     const email = getRecipientEmail(recipient);
     if (!email) {
       if (!silent) alert("Could not find an email address for this recipient.");
       return { success: false, error: "Could not find an email address for this recipient." };
     }
 
-    if (!smtpConfig.smtpUser || !smtpConfig.smtpPass || !smtpConfig.fromAddress) {
-      if (!silent) alert("Please fill in all SMTP Configuration fields first.");
-      return { success: false, error: "Please fill in all SMTP Configuration fields first." };
+    if (!isNwmActive) {
+      if (!silent) alert("Please connect via NWM Webmail first (Click 'Connect via NWM Webmail' at the top left).");
+      return { success: false, error: "NWM Webmail is not connected. Please connect it first." };
     }
 
     setSendingIds(prev => ({ ...prev, [recipient.id]: true }));
@@ -147,14 +149,10 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
       const response = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal,
         body: JSON.stringify({
-          smtpHost: smtpConfig.smtpHost,
-          smtpPort: smtpConfig.smtpPort,
-          smtpUser: smtpConfig.smtpUser,
-          smtpPass: smtpConfig.smtpPass,
-          fromAddress: smtpConfig.fromAddress,
           ccAddress: smtpConfig.ccAddress,
-          bccMyself: smtpConfig.bccMyself,
+          manualSend: smtpConfig.manualSend,
           to: email,
           subject,
           body
@@ -167,6 +165,9 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
       markAsSent(recipient.id);
       return { success: true };
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return { success: false, error: 'Aborted' };
+      }
       if (!silent) {
         alert(`Error sending email: ${err.message}`);
       } else {
@@ -201,7 +202,6 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
 
     for (let i = 0; i < toSend.length; i++) {
       if (cancelSendAllRef.current) {
-        alert("Bulk sending cancelled.");
         break;
       }
 
@@ -211,8 +211,17 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
       const subject = recipient['_editedSubject'] ?? getReplacedText(template.subject, recipient);
       const body = recipient['_editedBody'] ?? getReplacedText(template.body, recipient);
 
-      const result = await handleSendDirectly(recipient, subject, body, true);
+      const controller = new AbortController();
+      activeAbortControllerRef.current = controller;
+
+      const result = await handleSendDirectly(recipient, subject, body, true, controller.signal);
+
+      activeAbortControllerRef.current = null;
+
       if (!result.success) {
+        if (cancelSendAllRef.current || result.error === 'Aborted') {
+          break;
+        }
         stoppedOnError = true;
         const nameKey = Object.keys(recipient).find(k => k.toLowerCase().includes('name'));
         const identifier = nameKey ? recipient[nameKey] : getRecipientEmail(recipient);
@@ -221,7 +230,7 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
       }
 
       if (i < toSend.length - 1 && !cancelSendAllRef.current) {
-        for (let delay = 0; delay < 11; delay++) {
+        for (let delay = 0; delay < 5; delay++) {
           if (cancelSendAllRef.current) break;
           await new Promise(r => setTimeout(r, 1000));
         }
@@ -230,7 +239,9 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
 
     setIsSendingAll(false);
 
-    if (!stoppedOnError && !cancelSendAllRef.current) {
+    if (cancelSendAllRef.current) {
+      alert("Bulk sending cancelled.");
+    } else if (!stoppedOnError) {
       alert("All emails sent successfully!");
     }
   };
@@ -306,7 +317,12 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
                 ></div>
               </div>
               <button
-                onClick={() => { cancelSendAllRef.current = true; }}
+                onClick={() => {
+                  cancelSendAllRef.current = true;
+                  if (activeAbortControllerRef.current) {
+                    activeAbortControllerRef.current.abort();
+                  }
+                }}
                 className="mt-1.5 text-center text-xs font-semibold text-red-600 hover:text-red-700 bg-white border border-red-200 py-1.5 rounded hover:bg-red-50 transition-colors shadow-sm"
               >
                 Cancel Sending

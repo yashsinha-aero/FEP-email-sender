@@ -70,15 +70,10 @@ export default function App() {
     if (saved) return JSON.parse(saved);
     return DEFAULT_TEMPLATE;
   });
-  const [smtpHost, setSmtpHost] = useState<string>(() => localStorage.getItem('profmail_smtpHost') ?? 'mmtp.iitk.ac.in');
-  const [smtpPort, setSmtpPort] = useState<string>(() => localStorage.getItem('profmail_smtpPort') ?? '465');
-  const [smtpUser, setSmtpUser] = useState<string>(() => localStorage.getItem('profmail_smtpUser') ?? '');
-  const [smtpPass, setSmtpPass] = useState<string>(() => localStorage.getItem('profmail_smtpPass') ?? '');
-  const [fromAddress, setFromAddress] = useState<string>(() => localStorage.getItem('profmail_fromAddress') ?? '');
   const [ccAddress, setCcAddress] = useState<string>(() => localStorage.getItem('profmail_ccAddress') ?? 'sumitd24@iitk.ac.in');
-  const [bccMyself, setBccMyself] = useState<boolean>(() => {
-    const saved = localStorage.getItem('profmail_bccMyself');
-    return saved ? saved === 'true' : true;
+  const [manualSend, setManualSend] = useState<boolean>(() => {
+    const saved = localStorage.getItem('profmail_manualSend');
+    return saved ? saved === 'true' : false;
   });
   const [sentStatus, setSentStatus] = useState<SentStatus>(() => {
     const saved = localStorage.getItem('profmail_sentStatus');
@@ -98,32 +93,12 @@ export default function App() {
   }, [template]);
 
   React.useEffect(() => {
-    localStorage.setItem('profmail_smtpHost', smtpHost);
-  }, [smtpHost]);
-
-  React.useEffect(() => {
-    localStorage.setItem('profmail_smtpPort', smtpPort);
-  }, [smtpPort]);
-
-  React.useEffect(() => {
-    localStorage.setItem('profmail_smtpUser', smtpUser);
-  }, [smtpUser]);
-
-  React.useEffect(() => {
-    localStorage.setItem('profmail_smtpPass', smtpPass);
-  }, [smtpPass]);
-
-  React.useEffect(() => {
-    localStorage.setItem('profmail_fromAddress', fromAddress);
-  }, [fromAddress]);
-
-  React.useEffect(() => {
     localStorage.setItem('profmail_ccAddress', ccAddress);
   }, [ccAddress]);
 
   React.useEffect(() => {
-    localStorage.setItem('profmail_bccMyself', String(bccMyself));
-  }, [bccMyself]);
+    localStorage.setItem('profmail_manualSend', String(manualSend));
+  }, [manualSend]);
 
   React.useEffect(() => {
     localStorage.setItem('profmail_sentStatus', JSON.stringify(sentStatus));
@@ -151,26 +126,45 @@ export default function App() {
       localStorage.removeItem('profmail_recipients');
       localStorage.removeItem('profmail_headers');
       localStorage.removeItem('profmail_template');
-      localStorage.removeItem('profmail_smtpHost');
-      localStorage.removeItem('profmail_smtpPort');
-      localStorage.removeItem('profmail_smtpUser');
-      localStorage.removeItem('profmail_smtpPass');
-      localStorage.removeItem('profmail_fromAddress');
       localStorage.removeItem('profmail_ccAddress');
-      localStorage.removeItem('profmail_bccMyself');
+      localStorage.removeItem('profmail_manualSend');
       localStorage.removeItem('profmail_sentStatus');
 
       setRecipients([]);
       setHeaders([]);
       setTemplate(DEFAULT_TEMPLATE);
-      setSmtpHost('mmtp.iitk.ac.in');
-      setSmtpPort('465');
-      setSmtpUser('');
-      setSmtpPass('');
-      setFromAddress('');
       setCcAddress('sumitd24@iitk.ac.in');
-      setBccMyself(true);
+      setManualSend(false);
       setSentStatus({});
+    }
+  };
+
+  const [nwmConnecting, setNwmConnecting] = useState(false);
+  const [nwmStatus, setNwmStatus] = useState<'disconnected' | 'waiting_for_login' | 'connected'>('disconnected');
+
+  React.useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/nwm-status');
+        const data = await res.json();
+        if (data.status) setNwmStatus(data.status);
+      } catch (e) {
+        setNwmStatus('disconnected');
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleConnectNwm = async () => {
+    setNwmConnecting(true);
+    try {
+      const res = await fetch('/api/start-nwm', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+    } catch (e: any) {
+      alert("Failed to start NWM: " + e.message);
+    } finally {
+      setNwmConnecting(false);
     }
   };
 
@@ -194,54 +188,19 @@ export default function App() {
             <section>
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">1. Configuration</h2>
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">SMTP Host</label>
-                    <input
-                      type="text"
-                      value={smtpHost}
-                      onChange={(e) => setSmtpHost(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none focus:border-gray-500"
-                    />
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <p className="text-sm text-blue-800 mb-3 font-medium">Connect via NWM Webmail</p>
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={handleConnectNwm}
+                      disabled={nwmConnecting || nwmStatus === 'connected'}
+                      className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    >
+                      {nwmConnecting ? 'Connecting...' : (nwmStatus === 'connected' ? 'NWM Active' : 'Connect via NWM Webmail')}
+                    </button>
+                    {nwmStatus === 'waiting_for_login' && <span className="text-xs font-semibold text-orange-600 animate-pulse">Waiting for you to log in...</span>}
+                    {nwmStatus === 'connected' && <span className="text-xs font-bold text-green-600">✓ Connected & Ready to Send</span>}
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">Port</label>
-                    <input
-                      type="text"
-                      value={smtpPort}
-                      onChange={(e) => setSmtpPort(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none focus:border-gray-500"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">Username / Email</label>
-                    <input
-                      type="text"
-                      value={smtpUser}
-                      onChange={(e) => setSmtpUser(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none focus:border-gray-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">Password</label>
-                    <input
-                      type="password"
-                      value={smtpPass}
-                      onChange={(e) => setSmtpPass(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none focus:border-gray-500"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">From Name & Address (e.g. Your Name &lt;your@iitk.ac.in&gt;)</label>
-                  <input
-                    type="text"
-                    value={fromAddress}
-                    onChange={(e) => setFromAddress(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none focus:border-gray-500"
-                  />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-600 mb-1">CC Address (Optional)</label>
@@ -253,28 +212,30 @@ export default function App() {
                     placeholder="sumitd24@iitk.ac.in"
                   />
                 </div>
-                <div className="pt-2">
-                  <label className="flex items-center space-x-2 text-sm text-gray-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={bccMyself}
-                      onChange={(e) => setBccMyself(e.target.checked)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
-                    />
-                    <span>BCC myself (to save a copy)</span>
-                  </label>
-                  <p className="text-[11px] text-gray-500 mt-1 ml-6">
-                    SMTP doesn't save to "Sent" folder automatically. BCC yourself to keep a record.
-                  </p>
+                <div className="pt-2 space-y-3">
+                  <div className="space-y-1">
+                    <label className="flex items-center space-x-2 text-sm text-gray-700 cursor-pointer font-medium text-blue-700">
+                      <input
+                        type="checkbox"
+                        checked={manualSend}
+                        onChange={(e) => setManualSend(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                      />
+                      <span>Review & Send manually in browser</span>
+                    </label>
+                    <p className="text-[11px] text-gray-500 ml-6 leading-normal">
+                      If checked, NWM will compose the email and paste the content but won't click "Send" automatically. You can review/edit it, click "Send" yourself, and the next recipient will automatically load.
+                    </p>
+                  </div>
                 </div>
               </div>
             </section>
-
+ 
             <section>
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">2. CSV Upload</h2>
               <CsvUploader onDataLoaded={handleDataLoaded} />
             </section>
-
+ 
             <section>
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">3. Template</h2>
               <TemplateEditor
@@ -284,7 +245,7 @@ export default function App() {
               />
             </section>
           </div>
-
+ 
           <div>
             <section className="sticky top-6">
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">4. Review & Send</h2>
@@ -294,7 +255,8 @@ export default function App() {
                 sentStatus={sentStatus}
                 markAsSent={handleMarkAsSent}
                 updateRecipient={handleUpdateRecipient}
-                smtpConfig={{ smtpHost, smtpPort, smtpUser, smtpPass, fromAddress, ccAddress, bccMyself }}
+                smtpConfig={{ ccAddress, manualSend }}
+                isNwmActive={nwmStatus === 'connected'}
               />
             </section>
           </div>

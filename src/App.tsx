@@ -19,13 +19,13 @@ We are excited to continue the Foreign Exposure Programme (FEP), organised by th
 
 {{Personalized_Line}}
 
-You can find more details about the programme in our brochure <a href="https://drive.google.com/file/d/1LhUNhBEgSJ-c8KgDvOMXV6xgmO-UKk4k/view">here</a>.
+You can find more details about the programme in our brochure&nbsp;<a href="https://drive.google.com/file/d/1LhUNhBEgSJ-c8KgDvOMXV6xgmO-UKk4k/view" target="_blank" rel="noopener noreferrer" style="display: inline !important; white-space: nowrap;">here</a>.
 
 The applicants for this programme are highly motivated undergraduate students from one of India's premier institutes, eager to gain research experience and explore their interests in various fields. They are enthusiastic, dependable, and committed to utilising their skills effectively.
 
-We kindly request you to register in our portal <a href="https://iriitk.com/fep/signup">here</a> and add the project details.
+We kindly request you to register in our portal&nbsp;<a href="https://iriitk.com/fep/signup" target="_blank" rel="noopener noreferrer" style="display: inline !important; white-space: nowrap;">here</a>&nbsp;and add the project details.
 
-In case of any issues with the portal please fill the Google form <a href="https://docs.google.com/forms/d/e/1FAIpQLSdVCuneIq-zdJRRDeSdQfZE_2w4arievRUCAL6nmBBdmpxGww/viewform?usp=send_form">here</a>.
+In case of any issues with the portal please fill the Google form&nbsp;<a href="https://docs.google.com/forms/d/e/1FAIpQLSdVCuneIq-zdJRRDeSdQfZE_2w4arievRUCAL6nmBBdmpxGww/viewform?usp=send_form" target="_blank" rel="noopener noreferrer" style="display: inline !important; white-space: nowrap;">here</a>.
 
 Once you submit the form, a member of our team will reach out to you for further discussions.
 

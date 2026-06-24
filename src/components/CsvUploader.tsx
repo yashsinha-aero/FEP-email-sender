@@ -204,25 +204,25 @@ export function CsvUploader({ onDataLoaded }: CsvUploaderProps) {
                         onClick={() => handleSort('index')}
                         className="pb-2 cursor-pointer hover:text-gray-700"
                       >
-                        Row # {sortKey === 'index' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        Row # {sortKey === 'index' && (sortOrder === 'asc' ? ' (asc)' : ' (desc)')}
                       </th>
                       <th
                         onClick={() => handleSort('name')}
                         className="pb-2 cursor-pointer hover:text-gray-700"
                       >
-                        Name {sortKey === 'name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        Name {sortKey === 'name' && (sortOrder === 'asc' ? ' (asc)' : ' (desc)')}
                       </th>
                       <th
                         onClick={() => handleSort('email')}
                         className="pb-2 cursor-pointer hover:text-gray-700"
                       >
-                        Email {sortKey === 'email' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        Email {sortKey === 'email' && (sortOrder === 'asc' ? ' (asc)' : ' (desc)')}
                       </th>
                       <th
                         onClick={() => handleSort('reason')}
                         className="pb-2 cursor-pointer hover:text-gray-700"
                       >
-                        Reason {sortKey === 'reason' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        Reason {sortKey === 'reason' && (sortOrder === 'asc' ? ' (asc)' : ' (desc)')}
                       </th>
                     </tr>
                   </thead>

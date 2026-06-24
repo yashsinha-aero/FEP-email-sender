@@ -6,12 +6,9 @@ import { EmailPreviewList } from './components/EmailPreviewList';
 import { Recipient, EmailTemplate, SentStatus } from './types';
 import { Send, FileSpreadsheet, Settings } from 'lucide-react';
 
-export default function App() {
-  const [recipients, setRecipients] = useState<Recipient[]>([]);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [template, setTemplate] = useState<EmailTemplate>({
-    subject: 'Invitation to Participate in the Foreign Exposure Programme (FEP) – IIT Kanpur',
-    body: `Dear {{Prof Name}},
+const DEFAULT_TEMPLATE: EmailTemplate = {
+  subject: 'Invitation to Participate in the Foreign Exposure Programme (FEP) – IIT Kanpur',
+  body: `Dear {{Prof Name}},
 
 Greetings from the International Relations Wing, IIT Kanpur!
 
@@ -37,15 +34,80 @@ Best regards,
 Yash Sinha
 Secretary
 International Relations Wing`
+};
+
+export default function App() {
+  const [recipients, setRecipients] = useState<Recipient[]>(() => {
+    const saved = localStorage.getItem('profmail_recipients');
+    return saved ? JSON.parse(saved) : [];
   });
-  const [smtpHost, setSmtpHost] = useState<string>('mmtp.iitk.ac.in');
-  const [smtpPort, setSmtpPort] = useState<string>('465');
-  const [smtpUser, setSmtpUser] = useState<string>('');
-  const [smtpPass, setSmtpPass] = useState<string>('');
-  const [fromAddress, setFromAddress] = useState<string>('');
-  const [ccAddress, setCcAddress] = useState<string>('sumitd24@iitk.ac.in');
-  const [bccMyself, setBccMyself] = useState<boolean>(true);
-  const [sentStatus, setSentStatus] = useState<SentStatus>({});
+  const [headers, setHeaders] = useState<string[]>(() => {
+    const saved = localStorage.getItem('profmail_headers');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [template, setTemplate] = useState<EmailTemplate>(() => {
+    const saved = localStorage.getItem('profmail_template');
+    if (saved) return JSON.parse(saved);
+    return DEFAULT_TEMPLATE;
+  });
+  const [smtpHost, setSmtpHost] = useState<string>(() => localStorage.getItem('profmail_smtpHost') ?? 'mmtp.iitk.ac.in');
+  const [smtpPort, setSmtpPort] = useState<string>(() => localStorage.getItem('profmail_smtpPort') ?? '465');
+  const [smtpUser, setSmtpUser] = useState<string>(() => localStorage.getItem('profmail_smtpUser') ?? '');
+  const [smtpPass, setSmtpPass] = useState<string>(() => localStorage.getItem('profmail_smtpPass') ?? '');
+  const [fromAddress, setFromAddress] = useState<string>(() => localStorage.getItem('profmail_fromAddress') ?? '');
+  const [ccAddress, setCcAddress] = useState<string>(() => localStorage.getItem('profmail_ccAddress') ?? 'sumitd24@iitk.ac.in');
+  const [bccMyself, setBccMyself] = useState<boolean>(() => {
+    const saved = localStorage.getItem('profmail_bccMyself');
+    return saved ? saved === 'true' : true;
+  });
+  const [sentStatus, setSentStatus] = useState<SentStatus>(() => {
+    const saved = localStorage.getItem('profmail_sentStatus');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_recipients', JSON.stringify(recipients));
+  }, [recipients]);
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_headers', JSON.stringify(headers));
+  }, [headers]);
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_template', JSON.stringify(template));
+  }, [template]);
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_smtpHost', smtpHost);
+  }, [smtpHost]);
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_smtpPort', smtpPort);
+  }, [smtpPort]);
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_smtpUser', smtpUser);
+  }, [smtpUser]);
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_smtpPass', smtpPass);
+  }, [smtpPass]);
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_fromAddress', fromAddress);
+  }, [fromAddress]);
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_ccAddress', ccAddress);
+  }, [ccAddress]);
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_bccMyself', String(bccMyself));
+  }, [bccMyself]);
+
+  React.useEffect(() => {
+    localStorage.setItem('profmail_sentStatus', JSON.stringify(sentStatus));
+  }, [sentStatus]);
 
   const handleDataLoaded = (data: Recipient[], loadedHeaders: string[]) => {
     setRecipients(data);
@@ -65,10 +127,29 @@ International Relations Wing`
   };
 
   const handleReset = () => {
-    if (confirm('Clear all data?')) {
+    if (confirm('Reset all configurations, templates, and data to defaults?')) {
+      localStorage.removeItem('profmail_recipients');
+      localStorage.removeItem('profmail_headers');
+      localStorage.removeItem('profmail_template');
+      localStorage.removeItem('profmail_smtpHost');
+      localStorage.removeItem('profmail_smtpPort');
+      localStorage.removeItem('profmail_smtpUser');
+      localStorage.removeItem('profmail_smtpPass');
+      localStorage.removeItem('profmail_fromAddress');
+      localStorage.removeItem('profmail_ccAddress');
+      localStorage.removeItem('profmail_bccMyself');
+      localStorage.removeItem('profmail_sentStatus');
+
       setRecipients([]);
       setHeaders([]);
-      setTemplate({ subject: '', body: '' });
+      setTemplate(DEFAULT_TEMPLATE);
+      setSmtpHost('mmtp.iitk.ac.in');
+      setSmtpPort('465');
+      setSmtpUser('');
+      setSmtpPass('');
+      setFromAddress('');
+      setCcAddress('sumitd24@iitk.ac.in');
+      setBccMyself(true);
       setSentStatus({});
     }
   };
@@ -79,14 +160,12 @@ International Relations Wing`
         
         <div className="flex items-center justify-between pb-4 border-b border-gray-200">
           <h1 className="text-xl font-medium tracking-tight text-gray-900">ProfMail Sender</h1>
-          {recipients.length > 0 && (
-            <button 
-              onClick={handleReset}
-              className="text-sm text-gray-500 hover:text-gray-900"
-            >
-              Reset Data
-            </button>
-          )}
+          <button 
+            onClick={handleReset}
+            className="text-sm text-gray-500 hover:text-gray-900"
+          >
+            Reset to Default
+          </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">

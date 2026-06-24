@@ -15,7 +15,7 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [generatingFor, setGeneratingFor] = useState<string | null>(null);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
-  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [sendingIds, setSendingIds] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editSubject, setEditSubject] = useState('');
   const [editBody, setEditBody] = useState('');
@@ -142,7 +142,7 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
       return { success: false, error: "Please fill in all SMTP Configuration fields first." };
     }
 
-    setSendingId(recipient.id);
+    setSendingIds(prev => ({ ...prev, [recipient.id]: true }));
     try {
       const response = await fetch('/api/send-email', {
         method: 'POST',
@@ -174,7 +174,11 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
       }
       return { success: false, error: err.message };
     } finally {
-      setSendingId(null);
+      setSendingIds(prev => {
+        const copy = { ...prev };
+        delete copy[recipient.id];
+        return copy;
+      });
     }
   };
 
@@ -321,17 +325,17 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
               <div className="flex space-x-2">
                 <button
                   onClick={handleSendAll}
-                  disabled={sendingId !== null || isGeneratingAll}
+                  disabled={Object.keys(sendingIds).length > 0 || isGeneratingAll}
                   className="flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-white border border-blue-300 rounded hover:bg-blue-50 transition-colors shadow-sm whitespace-nowrap disabled:opacity-50"
                 >
                   Send to All ({unsentRecipients.length})
                 </button>
                 <button
                   onClick={handleFastSend}
-                  disabled={sendingId === nextUnsent.id}
+                  disabled={sendingIds[nextUnsent.id]}
                   className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap disabled:opacity-50"
                 >
-                  {sendingId === nextUnsent.id ? (
+                  {sendingIds[nextUnsent.id] ? (
                     <><Loader2 size={16} className="mr-2 animate-spin" /> Sending...</>
                   ) : (
                     <><Send size={16} className="mr-2" /> Send & Next</>
@@ -367,8 +371,8 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
                 onClick={() => setExpandedId(isExpanded ? null : recipient.id)}
               >
                 <div className="flex items-center space-x-4 flex-1 min-w-0">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isSent ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                    {isSent ? <CheckCircle2 size={18} /> : <span className="text-xs font-medium">{index + 1}</span>}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isSent ? 'bg-green-100 text-green-600' : sendingIds[recipient.id] ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                    {isSent ? <CheckCircle2 size={18} /> : sendingIds[recipient.id] ? <Loader2 size={18} className="animate-spin" /> : <span className="text-xs font-medium">{index + 1}</span>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2">
@@ -431,6 +435,7 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
                     </button>
                   )}
                   {isSent && <span className="text-xs font-medium text-green-600 px-2 py-1 bg-green-100 rounded-full">Sent</span>}
+                  {sendingIds[recipient.id] && <span className="text-xs font-medium text-blue-600 px-2 py-1 bg-blue-100 rounded-full flex items-center"><Loader2 size={12} className="animate-spin mr-1" /> Sending</span>}
                   <button className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100">
                     {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                   </button>
@@ -524,10 +529,10 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
                         e.stopPropagation();
                         await handleSendDirectly(recipient, subject, body);
                       }}
-                      disabled={sendingId === recipient.id}
+                      disabled={sendingIds[recipient.id]}
                       className="flex items-center px-4 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 shadow-sm disabled:opacity-50"
                     >
-                      {sendingId === recipient.id ? (
+                      {sendingIds[recipient.id] ? (
                         <><Loader2 size={14} className="mr-2 animate-spin" /> Sending...</>
                       ) : (
                         <><Send size={14} className="mr-2" /> {isSent ? 'Send Again' : 'Send Now'}</>

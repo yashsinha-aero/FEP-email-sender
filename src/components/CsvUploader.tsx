@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { UploadCloud, FileText, AlertCircle, ChevronUp, ChevronDown } from 'lucide-react';
+import { formatProfName } from '../utils/nameHelper';
 
 interface CsvUploaderProps {
   onDataLoaded: (data: any[], headers: string[]) => void;
@@ -71,7 +72,8 @@ export function CsvUploader({ onDataLoaded }: CsvUploaderProps) {
           setError('Warning: Could not find an "email" column in the CSV. You might need to adjust your CSV headers.');
         }
 
-        const profNameHeader = headers.find(h => h.toLowerCase().includes('prof name'));
+        const profNameHeader = headers.find(h => h.toLowerCase().includes('prof name')) ||
+                               headers.find(h => h.toLowerCase().includes('name') && !h.toLowerCase().includes('email') && !h.toLowerCase().includes('cc') && !h.toLowerCase().includes('bcc'));
         const mailedByHeader = headers.find(h => h.toLowerCase().includes('mailed by(2026)'));
 
         const filteredOutList: FilteredRow[] = [];
@@ -120,6 +122,10 @@ export function CsvUploader({ onDataLoaded }: CsvUploaderProps) {
               reason: 'Blank Name'
             });
             return;
+          }
+
+          if (profNameHeader) {
+            row[profNameHeader] = formatProfName(nameVal);
           }
 
           validList.push(row);

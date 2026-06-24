@@ -15,19 +15,19 @@ if (process.env.NODE_ENV !== "production") {
 
 function sanitizeGeneratedText(text: string): string {
   let cleaned = text.trim();
-  
+
   cleaned = cleaned.replace(/\u2011/g, '-');
-  
+
   cleaned = cleaned.replace(/\u2013/g, '-').replace(/\u2014/g, '-');
-  
+
   cleaned = cleaned.replace(/[\u201c\u201d]/g, '"');
   cleaned = cleaned.replace(/[\u2018\u2019]/g, "'");
-  
+
   cleaned = cleaned.replace(/\u00a0/g, ' ');
-  
+
   cleaned = cleaned.replace(/^["'“‘”’]+|["'“‘”’]+$/g, '');
   cleaned = cleaned.trim();
-  
+
   return cleaned;
 }
 
@@ -141,21 +141,41 @@ async function startServer() {
         baseURL: "https://integrate.api.nvidia.com/v1"
       });
 
-      const prompt = `You have to generate a short 1-2 line description of how learning from the professor's experience, expertise, and guidance in their field would benefit students. Their research interest is: "${researchInterest}".
-Your response must be a single, objective sentence describing how gaining insights under their mentorship, leadership, or expertise in this research area would be highly beneficial for undergraduate students.
-Crucially, keep the sentence professor-centered (focusing on their mentorship, guidance, expertise, knowledge, or leadership in this field) but vary the sentence structure and vocabulary each time.
-You must write in the second-person ("your", "under your mentorship", "your expertise", "your guidance") to address the professor directly (e.g. "your expertise" instead of "the professor's expertise").
-Avoid using the exact phrase "your pioneering work" or "offers an excellent opportunity" repeatedly. Instead, use a wide variety of natural phrasings.
+      const prompt = `You are helping personalize an outreach email to a professor for IIT Kanpur's Foreign Exposure Programme (FEP).
 
-Here are a few different styles and phrasings you can draw inspiration from (do not copy them verbatim, vary them):
-- "Learning from your extensive expertise and guidance in [topic] would provide students with an invaluable foundation in [specific aspect]."
-- "Your deep knowledge and research leadership in [topic] will offer a unique mentorship opportunity for students looking to excel in [specific aspect]."
-- "Studying under your mentorship on projects involving [topic] would help students bridge the gap between theory and practical application in [specific aspect]."
-- "Gaining insights from your established research in [topic] would enable undergraduates to develop a rigorous understanding of [specific aspect]."
-- "Your expert perspective and hands-on experience in [topic] create an ideal environment for students to master [specific aspect]."
+Input:
+Research Interest: "${researchInterest}"
 
-DO NOT use any first-person pronouns (no "I", "me", "my", "we", "our"). Do not use phrases like "I will be" or "I am writing to".
-Keep it professional, polite, and concise. Do not include any greetings or sign-offs, just the sentence itself.`;
+Task:
+Generate exactly 1-2 professional sentences that can be inserted into an email after the introduction paragraph.
+
+Instructions:
+
+1. First identify the professor's primary research theme from the provided research interests.
+2. If many research interests are provided, group them into a broader theme instead of listing them individually.
+3. Mention at most 2 specific research areas if necessary.
+4. Explain how a research opportunity under the professor's guidance would benefit undergraduate students through research exposure, mentorship, and practical experience.
+5. Keep the tone professional, concise, and personalized.
+6. Avoid excessive praise, generic compliments, or marketing language.
+7. Do not directly ask for a project.
+8. Do not repeat information already present in the email.
+9. Output only the customization text.
+10. Keep the output between 30 and 70 words.
+
+Examples:
+
+Research Interest:
+Machine Learning, Deep Learning, Computer Vision, Medical Imaging, Pattern Recognition, AI for Healthcare
+
+Output:
+Given your contributions to AI-driven healthcare research, an opportunity to work under your guidance would expose students to the development of advanced computational methods for solving real-world challenges. Such experience would help them strengthen both their technical foundations and research capabilities.
+
+Research Interest:
+Composite Materials, Structural Dynamics, Aerospace Structures, Fatigue Analysis, Experimental Mechanics, Aircraft Design
+
+Output:
+Your research in advanced aerospace structures and materials would provide students with valuable exposure to the challenges of designing and analyzing modern engineering systems. Working in this area would help them develop strong analytical and experimental research skills.
+`;
 
       const response = await openai.chat.completions.create({
         model: "openai/gpt-oss-20b",

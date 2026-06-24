@@ -5,6 +5,7 @@ import { TemplateEditor } from './components/TemplateEditor';
 import { EmailPreviewList } from './components/EmailPreviewList';
 import { Recipient, EmailTemplate, SentStatus } from './types';
 import { Send, FileSpreadsheet, Settings } from 'lucide-react';
+import { formatProfName } from './utils/nameHelper';
 
 const DEFAULT_TEMPLATE: EmailTemplate = {
   subject: 'Invitation to Participate in the Foreign Exposure Programme (FEP) – IIT Kanpur',
@@ -33,13 +34,32 @@ Looking forward to your participation.
 Best regards,
 Yash Sinha
 Secretary
-International Relations Wing`
+International Relations Wing, IIT Kanpur`
 };
 
 export default function App() {
   const [recipients, setRecipients] = useState<Recipient[]>(() => {
     const saved = localStorage.getItem('profmail_recipients');
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as Recipient[];
+        if (parsed.length > 0) {
+          const keys = Object.keys(parsed[0]);
+          const nameKey = keys.find(k => k.toLowerCase().includes('prof name')) ||
+            keys.find(k => k.toLowerCase().includes('name') && !k.toLowerCase().includes('email') && !k.toLowerCase().includes('cc') && !k.toLowerCase().includes('bcc'));
+          if (nameKey) {
+            return parsed.map(r => ({
+              ...r,
+              [nameKey]: formatProfName(r[nameKey] || '')
+            }));
+          }
+        }
+        return parsed;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [];
   });
   const [headers, setHeaders] = useState<string[]>(() => {
     const saved = localStorage.getItem('profmail_headers');
@@ -157,10 +177,10 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans p-6">
       <div className="max-w-5xl mx-auto space-y-6">
-        
+
         <div className="flex items-center justify-between pb-4 border-b border-gray-200">
           <h1 className="text-xl font-medium tracking-tight text-gray-900">ProfMail Sender</h1>
-          <button 
+          <button
             onClick={handleReset}
             className="text-sm text-gray-500 hover:text-gray-900"
           >
@@ -169,7 +189,7 @@ export default function App() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-          
+
           <div className="space-y-8">
             <section>
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">1. Configuration</h2>
@@ -257,9 +277,9 @@ export default function App() {
 
             <section>
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">3. Template</h2>
-              <TemplateEditor 
-                template={template} 
-                setTemplate={setTemplate} 
+              <TemplateEditor
+                template={template}
+                setTemplate={setTemplate}
                 availableVariables={headers}
               />
             </section>
@@ -268,9 +288,9 @@ export default function App() {
           <div>
             <section className="sticky top-6">
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">4. Review & Send</h2>
-              <EmailPreviewList 
-                recipients={recipients} 
-                template={template} 
+              <EmailPreviewList
+                recipients={recipients}
+                template={template}
                 sentStatus={sentStatus}
                 markAsSent={handleMarkAsSent}
                 updateRecipient={handleUpdateRecipient}
@@ -278,8 +298,11 @@ export default function App() {
               />
             </section>
           </div>
-
         </div>
+
+        <footer className="pt-12 pb-4 text-center text-[11px] text-gray-400 font-normal tracking-wider select-none">
+          Developed by Yash Sinha
+        </footer>
       </div>
     </div>
   );

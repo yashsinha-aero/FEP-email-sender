@@ -113,8 +113,9 @@ export default function App() {
     }
   };
 
-  const handleUpdateRecipient = (id: string, updates: Partial<Recipient>) => {
-    setRecipients(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+  const handleUpdateRecipient = (idOrIds: string | string[], updates: Partial<Recipient>) => {
+    const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
+    setRecipients(prev => prev.map(r => ids.includes(r.id) ? { ...r, ...updates } : r));
   };
 
   const handleMarkAsSent = (id: string) => {
@@ -143,26 +144,37 @@ export default function App() {
   const [nwmStatus, setNwmStatus] = useState<'disconnected' | 'waiting_for_login' | 'connected'>('disconnected');
 
   React.useEffect(() => {
-    const interval = setInterval(async () => {
+    let active = true;
+    const checkStatus = async () => {
       try {
         const res = await fetch('/api/nwm-status');
         const data = await res.json();
-        if (data.status) setNwmStatus(data.status);
+        if (active && data.status) setNwmStatus(data.status);
       } catch (e) {
-        setNwmStatus('disconnected');
+        if (active) setNwmStatus('disconnected');
       }
-    }, 2000);
-    return () => clearInterval(interval);
+    };
+    
+    checkStatus();
+    const interval = setInterval(checkStatus, 2000);
+    
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const handleConnectNwm = async () => {
     setNwmConnecting(true);
     try {
-      const res = await fetch('/api/start-nwm', { method: 'POST' });
+      const res = await fetch('/api/start-nwm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
     } catch (e: any) {
-      alert("Failed to start NWM: " + e.message);
+      alert("Failed to connect: " + e.message);
     } finally {
       setNwmConnecting(false);
     }
@@ -194,9 +206,9 @@ export default function App() {
                     <button
                       onClick={handleConnectNwm}
                       disabled={nwmConnecting || nwmStatus === 'connected'}
-                      className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                      className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
                     >
-                      {nwmConnecting ? 'Connecting...' : (nwmStatus === 'connected' ? 'NWM Active' : 'Connect via NWM Webmail')}
+                      {nwmConnecting ? 'Connecting...' : (nwmStatus === 'connected' ? 'Connected' : 'Connect via NWM Webmail')}
                     </button>
                     {nwmStatus === 'waiting_for_login' && <span className="text-xs font-semibold text-orange-600 animate-pulse">Waiting for you to log in...</span>}
                     {nwmStatus === 'connected' && <span className="text-xs font-bold text-green-600">✓ Connected & Ready to Send</span>}
@@ -224,18 +236,18 @@ export default function App() {
                       <span>Review & Send manually in browser</span>
                     </label>
                     <p className="text-[11px] text-gray-500 ml-6 leading-normal">
-                      If checked, NWM will compose the email and paste the content but won't click "Send" automatically. You can review/edit it, click "Send" yourself, and the next recipient will automatically load.
+                      If checked, the browser will compose the email and paste the content but won't click "Send" automatically. You can review/edit it, click "Send" yourself, and the next recipient will automatically load.
                     </p>
                   </div>
                 </div>
               </div>
             </section>
- 
+
             <section>
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">2. CSV Upload</h2>
               <CsvUploader onDataLoaded={handleDataLoaded} />
             </section>
- 
+
             <section>
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">3. Template</h2>
               <TemplateEditor
@@ -245,7 +257,7 @@ export default function App() {
               />
             </section>
           </div>
- 
+
           <div>
             <section className="sticky top-6">
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">4. Review & Send</h2>

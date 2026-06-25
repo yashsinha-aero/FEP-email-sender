@@ -65,13 +65,17 @@ async function startServer() {
       const { ccAddress, to, subject, body, manualSend } = req.body;
 
       if (!activePage || activePage.isClosed()) {
-        return res.status(400).json({ error: "NWM Webmail is not connected. Please connect it first from the UI." });
+        return res.status(400).json({ error: "Webmail is not connected. Please connect it first from the UI." });
       }
 
       if (!to || !subject || !body) {
         return res.status(400).json({ error: "Missing required fields: to, subject, or body" });
       }
 
+      // IITK Webmail Rate Limit Recommendations:
+      // - Not more than 80 emails in 10 minutes
+      // - Not more than 150 emails in an hour
+      // - Not more than 400 emails in a day
       const htmlBody = formatHtmlEmail(body);
 
       const dialogHandler = (dialog: any) => {

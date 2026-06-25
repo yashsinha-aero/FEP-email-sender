@@ -7,7 +7,7 @@ interface EmailPreviewListProps {
   template: EmailTemplate;
   sentStatus: SentStatus;
   markAsSent: (id: string) => void;
-  updateRecipient: (id: string, updates: Partial<Recipient>) => void;
+  updateRecipient: (idOrIds: string | string[], updates: Partial<Recipient>) => void;
   smtpConfig: { ccAddress: string; manualSend: boolean };
   isNwmActive?: boolean;
 }
@@ -24,6 +24,10 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
   const [sendAllProgress, setSendAllProgress] = useState({ current: 0, total: 0 });
   const cancelSendAllRef = useRef(false);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
+  const recipientsRef = useRef(recipients);
+  recipientsRef.current = recipients;
+  const smtpConfigRef = useRef(smtpConfig);
+  smtpConfigRef.current = smtpConfig;
 
   const getReplacedText = (text: string, recipient: Recipient) => {
     let result = text;
@@ -91,7 +95,7 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
     let errorCount = 0;
 
     for (const recipient of recipients) {
-      if (sentStatus[recipient.id] || recipient['Personalized_Line']) continue;
+      if (sentStatus[recipient.id] || recipient['Personalized_Line'] || recipient['_skipped'] === 'true') continue;
 
       const interestKey = Object.keys(recipient).find(k =>
         k.toLowerCase().includes('research') ||
@@ -151,8 +155,8 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
         headers: { 'Content-Type': 'application/json' },
         signal,
         body: JSON.stringify({
-          ccAddress: smtpConfig.ccAddress,
-          manualSend: smtpConfig.manualSend,
+          ccAddress: smtpConfigRef.current.ccAddress,
+          manualSend: smtpConfigRef.current.manualSend,
           to: email,
           subject,
           body
@@ -183,6 +187,13 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
     }
   };
 
+  const handleSkipAllBelow = (currentIndex: number) => {
+    const idsToSkip = recipients.slice(currentIndex + 1).map(r => r.id);
+    if (idsToSkip.length > 0) {
+      updateRecipient(idsToSkip, { _skipped: 'true' });
+    }
+  };
+
   const handleSendAll = async () => {
     const toSend = recipients.filter(r => !sentStatus[r.id] && r['_skipped'] !== 'true');
     if (toSend.length === 0) {
@@ -206,15 +217,16 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
       }
 
       const recipient = toSend[i];
+      const latestRecipient = recipientsRef.current.find(r => r.id === recipient.id) || recipient;
       setSendAllProgress(prev => ({ ...prev, current: i + 1 }));
 
-      const subject = recipient['_editedSubject'] ?? getReplacedText(template.subject, recipient);
-      const body = recipient['_editedBody'] ?? getReplacedText(template.body, recipient);
+      const subject = latestRecipient['_editedSubject'] ?? getReplacedText(template.subject, latestRecipient);
+      const body = latestRecipient['_editedBody'] ?? getReplacedText(template.body, latestRecipient);
 
       const controller = new AbortController();
       activeAbortControllerRef.current = controller;
 
-      const result = await handleSendDirectly(recipient, subject, body, true, controller.signal);
+      const result = await handleSendDirectly(latestRecipient, subject, body, true, controller.signal);
 
       activeAbortControllerRef.current = null;
 
@@ -229,10 +241,15 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
         break;
       }
 
+      // Delay for 6.1 seconds between emails to respect NWM rate limits:
+      // - Do not exceed 80 emails in 10 mins
+      // - Do not exceed 150 emails in 1 hr
+      // - Do not exceed 400 emails in 1 day
       if (i < toSend.length - 1 && !cancelSendAllRef.current) {
-        for (let delay = 0; delay < 5; delay++) {
-          if (cancelSendAllRef.current) break;
-          await new Promise(r => setTimeout(r, 1000));
+        const cooldownMs = 6100;
+        const startTime = Date.now();
+        while (Date.now() - startTime < cooldownMs && !cancelSendAllRef.current) {
+          await new Promise(r => setTimeout(r, 100));
         }
       }
     }
@@ -329,35 +346,40 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
               </button>
             </div>
           ) : (
-            <div className="flex items-center justify-between bg-blue-50/50 p-3 rounded border border-blue-100/50">
-              <div>
-                <h3 className="font-medium text-gray-900 flex items-center text-sm">
-                  Fast Send Mode
-                </h3>
-                <p className="text-xs text-gray-600 mt-0.5">
-                  Next: <span className="font-semibold">{Object.keys(nextUnsent).find(k => k.toLowerCase().includes('name')) ? nextUnsent[Object.keys(nextUnsent).find(k => k.toLowerCase().includes('name'))!] : getRecipientEmail(nextUnsent)}</span>
-                </p>
+            <div className="flex flex-col gap-2 bg-blue-50/50 p-3 rounded border border-blue-100/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900 flex items-center text-sm">
+                    Fast Send Mode
+                  </h3>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Next: <span className="font-semibold">{Object.keys(nextUnsent).find(k => k.toLowerCase().includes('name')) ? nextUnsent[Object.keys(nextUnsent).find(k => k.toLowerCase().includes('name'))!] : getRecipientEmail(nextUnsent)}</span>
+                  </p>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleSendAll}
+                    disabled={Object.keys(sendingIds).length > 0 || isGeneratingAll}
+                    className="flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-white border border-blue-300 rounded hover:bg-blue-50 transition-colors shadow-sm whitespace-nowrap disabled:opacity-50"
+                  >
+                    Send to All ({unsentRecipients.length})
+                  </button>
+                  <button
+                    onClick={handleFastSend}
+                    disabled={sendingIds[nextUnsent.id]}
+                    className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap disabled:opacity-50"
+                  >
+                    {sendingIds[nextUnsent.id] ? (
+                      <><Loader2 size={16} className="mr-2 animate-spin" /> Sending...</>
+                    ) : (
+                      <><Send size={16} className="mr-2" /> Send & Next</>
+                    )}
+                  </button>
+                </div>
               </div>
-              <div className="flex space-x-2">
-                <button
-                  onClick={handleSendAll}
-                  disabled={Object.keys(sendingIds).length > 0 || isGeneratingAll}
-                  className="flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-white border border-blue-300 rounded hover:bg-blue-50 transition-colors shadow-sm whitespace-nowrap disabled:opacity-50"
-                >
-                  Send to All ({unsentRecipients.length})
-                </button>
-                <button
-                  onClick={handleFastSend}
-                  disabled={sendingIds[nextUnsent.id]}
-                  className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap disabled:opacity-50"
-                >
-                  {sendingIds[nextUnsent.id] ? (
-                    <><Loader2 size={16} className="mr-2 animate-spin" /> Sending...</>
-                  ) : (
-                    <><Send size={16} className="mr-2" /> Send & Next</>
-                  )}
-                </button>
-              </div>
+              <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1 leading-normal font-medium mt-1">
+                ⚠️ Rate limit recommendation: Do not send more than 80 emails in 10 minutes, 150 in an hour, and 400 in a day.
+              </p>
             </div>
           )
         ) : (
@@ -436,19 +458,38 @@ export function EmailPreviewList({ recipients, template, sentStatus, markAsSent,
                     </button>
                   )}
                   {!isSent && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateRecipient(recipient.id, { _skipped: isSkipped ? 'false' : 'true' });
-                      }}
-                      className={`text-xs font-medium px-2 py-1 rounded border transition-colors ${isSkipped
-                        ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 font-semibold'
-                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700'
-                        }`}
-                      title={isSkipped ? "Include this professor in sending" : "Skip this professor"}
-                    >
-                      {isSkipped ? 'Skipped' : 'Skip'}
-                    </button>
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateRecipient(recipient.id, { _skipped: isSkipped ? 'false' : 'true' });
+                        }}
+                        className={`text-xs font-medium px-2 py-1 rounded border transition-colors ${isSkipped
+                          ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 font-semibold'
+                          : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700'
+                          }`}
+                        title={isSkipped ? "Include this professor in sending" : "Skip this professor"}
+                      >
+                        {isSkipped ? 'Skipped' : 'Skip'}
+                      </button>
+                      {index < recipients.length - 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const displayName = Object.keys(recipient).find(k => k.toLowerCase().includes('name'))
+                              ? recipient[Object.keys(recipient).find(k => k.toLowerCase().includes('name'))!]
+                              : email;
+                            if (confirm(`Skip all professors below ${displayName}?`)) {
+                              handleSkipAllBelow(index);
+                            }
+                          }}
+                          className="text-xs font-medium px-2 py-1 bg-white text-red-500 border border-gray-200 hover:bg-red-50 hover:border-red-200 rounded transition-colors"
+                          title="Skip all professors located below this one in the list"
+                        >
+                          Skip All Below
+                        </button>
+                      )}
+                    </div>
                   )}
                   {isSent && <span className="text-xs font-medium text-green-600 px-2 py-1 bg-green-100 rounded-full">Sent</span>}
                   {sendingIds[recipient.id] && <span className="text-xs font-medium text-blue-600 px-2 py-1 bg-blue-100 rounded-full flex items-center"><Loader2 size={12} className="animate-spin mr-1" /> Sending</span>}
